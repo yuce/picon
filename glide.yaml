@@ -1,0 +1,3 @@
+package: bitbucket.com/yuce/picon
+import:
+- package: github.com/chzyer/readline

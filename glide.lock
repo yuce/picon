@@ -1,0 +1,10 @@
+hash: 40f6ea807994bfc90c48e9de0802ec9e10330660c2d27b57e48fcfa7f923bf06
+updated: 2017-03-18T14:33:11.539460043+03:00
+imports:
+- name: github.com/chzyer/readline
+  version: 41eea22f717c616615e1e59aa06cf831f9901f35
+- name: golang.org/x/sys
+  version: c200b10b5d5e122be351b67af224adc6128af5bf
+  subpackages:
+  - unix
+testImports: []
