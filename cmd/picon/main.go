@@ -6,6 +6,8 @@ import (
 
 	"fmt"
 
+	"strconv"
+
 	"github.com/chzyer/readline"
 	pilosa "github.com/pilosa/go-client-pilosa"
 )
@@ -18,6 +20,7 @@ type promptInfo struct {
 var client *pilosa.Client
 var database *pilosa.Database
 var prompt promptInfo
+var lastResponse *pilosa.QueryResponse
 
 func listDatabases() func(string) []string {
 	return func(line string) []string {
@@ -71,6 +74,10 @@ func main() {
 		case line == ":exit":
 			goto exit
 		case line == "":
+		case line == "_":
+			if lastResponse != nil {
+				printResponse(lastResponse)
+			}
 		default:
 			executeQuery(line)
 		}
@@ -162,10 +169,60 @@ func executeQuery(line string) {
 	response, err := client.Query(database, line)
 	if err != nil {
 		fmt.Println("Error executing query:", err)
+		return
 	}
-	fmt.Println(response)
+	lastResponse = response
+	printResponse(response)
 }
 
 func updatePrompt() {
 	inst.SetPrompt(fmt.Sprintf("\033[36m%s\033[0m/\033[32m%s\033[0m» ", prompt.address, prompt.database))
+}
+
+func printResponse(response *pilosa.QueryResponse) {
+	if !response.IsSuccess {
+		printError(response.ErrorMessage)
+		return
+	}
+	results := response.Results
+	if results != nil {
+		for i, result := range results {
+			printResult(i, result)
+		}
+	}
+}
+
+func printError(msg string) {
+	fmt.Println("ERROR:", msg)
+}
+
+func printResult(index int, result *pilosa.QueryResult) {
+	fmt.Printf("[%5d] --------\n", index)
+	switch {
+	case result.BitmapResult != nil:
+		fmt.Println("\tAttributes: ", attributesToString(result.BitmapResult.Attributes))
+		fmt.Println("\tBits      : ", bitsToString(result.BitmapResult.Bits))
+	case result.CountItems != nil && len(result.CountItems) > 0:
+		for _, item := range result.CountItems {
+			fmt.Printf("\tCount(%d) = %d\n", item.ID, item.Count)
+		}
+	default:
+		fmt.Printf("\tCount: %d\n", result.Count)
+	}
+}
+
+func attributesToString(attrs map[string]interface{}) string {
+	parts := make([]string, 0, len(attrs))
+	for k, v := range attrs {
+		parts = append(parts, fmt.Sprintf("%s=%s", k, v))
+	}
+	return strings.Join(parts, ", ")
+}
+
+func bitsToString(bits []uint64) string {
+	parts := make([]string, 0, len(bits))
+	for _, v := range bits {
+		parts = append(parts, strconv.Itoa(int(v)))
+	}
+	return strings.Join(parts, ", ")
 }
