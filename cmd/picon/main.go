@@ -58,6 +58,7 @@ func main() {
 	defer inst.Close()
 	log.SetOutput(inst.Stderr())
 	updatePrompt()
+	lines := []string{}
 	for {
 		line, err := inst.Readline()
 		if err == readline.ErrInterrupt {
@@ -68,12 +69,25 @@ func main() {
 			}
 		}
 		line = strings.TrimSpace(line)
+		if strings.HasSuffix(line, "\\") {
+			inst.SetPrompt(">>> ")
+			lines = append(lines, strings.TrimRight(line, "\\"))
+			continue
+		}
+		if len(lines) > 0 {
+			lines = append(lines, line)
+			line = strings.Join(lines, "\n")
+			lines = []string{}
+			updatePrompt()
+		}
 		switch {
-		case strings.HasPrefix(line, ":"):
-			executeCommand(line)
+		case line == "":
 		case line == ":exit":
 			goto exit
-		case line == "":
+		case strings.HasPrefix(line, "#"):
+			inst.Operation.SetBuffer("# ")
+		case strings.HasPrefix(line, ":"):
+			executeCommand(line)
 		case line == "_":
 			if lastResponse != nil {
 				printResponse(lastResponse)
@@ -87,9 +101,9 @@ exit:
 
 func executeCommand(line string) {
 	var err error
-	parts := strings.Split(line, " ")
-	// TODO: trim
-	switch parts[0] {
+	parts := strings.Fields(line)
+	command := parts[0]
+	switch command {
 	case ":connect":
 		uri, err := pilosa.NewURIFromAddress(parts[1])
 		if err != nil {
@@ -158,7 +172,7 @@ func executeCommand(line string) {
 			fmt.Println("Don't know how to ensure ", which)
 		}
 	default:
-		fmt.Println("Invalid command: ", parts[0])
+		fmt.Println("Invalid command: ", command)
 	}
 }
 func executeQuery(line string) {
