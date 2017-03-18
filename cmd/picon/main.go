@@ -41,8 +41,8 @@ var completer = readline.NewPrefixCompleter(
 var inst *readline.Instance
 
 func main() {
-	l, err := readline.NewEx(&readline.Config{
-		Prompt:            "\033[31m[]»\033[0m ",
+	var err error
+	inst, err = readline.NewEx(&readline.Config{
 		HistoryFile:       "/tmp/picon.tmp",
 		AutoComplete:      completer,
 		InterruptPrompt:   "^C",
@@ -52,11 +52,11 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	defer l.Close()
-	inst = l
-	log.SetOutput(l.Stderr())
+	defer inst.Close()
+	log.SetOutput(inst.Stderr())
+	updatePrompt()
 	for {
-		line, err := l.Readline()
+		line, err := inst.Readline()
 		if err == readline.ErrInterrupt {
 			if len(line) == 0 {
 				break
@@ -93,6 +93,10 @@ func executeCommand(line string) {
 		client = pilosa.NewClientWithAddress(uri)
 		updatePrompt()
 	case ":use":
+		if client == nil {
+			fmt.Println("You must first connect to a server")
+			return
+		}
 		databaseName := parts[1]
 		database, err = pilosa.NewDatabase(databaseName)
 		if err != nil {
@@ -163,5 +167,5 @@ func executeQuery(line string) {
 }
 
 func updatePrompt() {
-	inst.SetPrompt(fmt.Sprintf("%s/\033[31m%s»\033[0m ", prompt.address, prompt.database))
+	inst.SetPrompt(fmt.Sprintf("\033[36m%s\033[0m/\033[32m%s\033[0m» ", prompt.address, prompt.database))
 }
