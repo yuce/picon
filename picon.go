@@ -338,7 +338,7 @@ func (c *Console) executeQuery(line string) error {
 }
 
 func (c *Console) updatePrompt() {
-	c.inst.SetPrompt(fmt.Sprintf("\033[36m%s\033[0m/\033[1m\033[32m%s\033[0m > ",
+	c.inst.SetPrompt(fmt.Sprintf("\033[36m%s\033[0m/\033[1m\033[32m%s\033[37m>\033[0m ",
 		c.prompt.address, c.prompt.database))
 }
 
