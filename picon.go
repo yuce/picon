@@ -30,13 +30,25 @@ type Console struct {
 	sessionsDirectory string
 	session           []string
 	sessionName       string
+	schema            *pilosa.Schema
 }
 
 func NewConsole(homeDirectory string) (*Console, error) {
+	sessionsDirectory := ""
+	if homeDirectory != "" {
+		sessionsDirectory = path.Join(homeDirectory, "sessions")
+	}
+	console := &Console{
+		prompt:            &promptInfo{address: "(not connected)", database: "(no DB)"},
+		homeDirectory:     homeDirectory,
+		sessionsDirectory: sessionsDirectory,
+		session:           []string{},
+		sessionName:       autoSessionName(),
+	}
 	completer := readline.NewPrefixCompleter(
 		readline.PcItem(":exit"),
 		readline.PcItem(":connect"),
-		readline.PcItem(":use", readline.PcItemDynamic(listDatabases())),
+		readline.PcItem(":use", readline.PcItemDynamic(console.listDatabases())),
 		readline.PcItem(":create",
 			readline.PcItem("db"),
 			readline.PcItem("frame")),
@@ -53,24 +65,15 @@ func NewConsole(homeDirectory string) (*Console, error) {
 		EOFPrompt:         ":exit",
 		HistorySearchFold: true,
 	}
-	sessionsDirectory := ""
 	if homeDirectory != "" {
 		config.HistoryFile = path.Join(homeDirectory, "history")
-		sessionsDirectory = path.Join(homeDirectory, "sessions")
 	}
 	inst, err := readline.NewEx(config)
 	if err != nil {
 		return nil, err
 	}
-
-	return &Console{
-		inst:              inst,
-		prompt:            &promptInfo{address: "(not connected)", database: "(no DB)"},
-		homeDirectory:     homeDirectory,
-		sessionsDirectory: sessionsDirectory,
-		session:           []string{},
-		sessionName:       autoSessionName(),
-	}, nil
+	console.inst = inst
+	return console, nil
 }
 
 func (c *Console) Close() {
@@ -136,48 +139,67 @@ func (c *Console) Main() {
 exit:
 }
 
-func listDatabases() func(string) []string {
+func (c *Console) listDatabases() func(string) []string {
 	return func(line string) []string {
-		return []string{"sample-db", "foo"}
+		dbnames := []string{}
+		if c.schema != nil {
+			for _, db := range c.schema.DBs {
+				dbnames = append(dbnames, db.Name)
+			}
+		}
+		return dbnames
 	}
 }
 
 func (c *Console) executeCommand(line string) (err error) {
-	words := strings.Fields(line)
-	command := words[0]
-	switch command {
+	args := strings.Fields(line)
+	cmd := args[0]
+	switch cmd {
 	case ":connect":
-		err = c.executeConnectCommand(words)
+		err = c.executeConnectCommand(cmd, args[1:])
 	case ":use":
-		err = c.executeUseCommand(words)
+		err = c.executeUseCommand(cmd, args[1:])
 	case ":ensure":
-		err = c.executeEnsureCommand(words)
+		err = c.executeEnsureCommand(cmd, args[1:])
 	case ":save":
-		err = c.executeSaveCommand(words)
+		err = c.executeSaveCommand(cmd, args[1:])
 	case ":session":
-		err = c.executeSessionCommand(words)
+		err = c.executeSessionCommand(cmd, args[1:])
+	case ":schema":
+		err = c.executeSchemaCommand(cmd, args[1:])
 	default:
-		err = fmt.Errorf("Invalid command: %s", command)
+		err = fmt.Errorf("Invalid command: %s", cmd)
 	}
 	return err
 }
 
-func (c *Console) executeConnectCommand(words []string) error {
-	uri, err := pilosa.NewURIFromAddress(words[1])
+func (c *Console) executeConnectCommand(cmd string, args []string) error {
+	if len(args) != 1 {
+		return errors.New("usage: :connect pilosa-address")
+	}
+	uri, err := pilosa.NewURIFromAddress(args[0])
 	if err != nil {
 		return err
 	}
-	c.prompt.address = uri.GetNormalizedAddress()
 	c.client = pilosa.NewClientWithAddress(uri)
+	err = c.updateSchema()
+	if err != nil {
+		c.client = nil
+		return err
+	}
+	c.prompt.address = uri.GetNormalizedAddress()
 	c.updatePrompt()
 	return nil
 }
 
-func (c *Console) executeUseCommand(words []string) (err error) {
+func (c *Console) executeUseCommand(cmd string, args []string) (err error) {
+	if len(args) != 1 {
+		return errors.New("usage: :use db-name")
+	}
 	if c.client == nil {
 		return errNotConnected
 	}
-	databaseName := words[1]
+	databaseName := args[0]
 	c.database, err = pilosa.NewDatabase(databaseName)
 	if err != nil {
 		return err
@@ -186,16 +208,16 @@ func (c *Console) executeUseCommand(words []string) (err error) {
 	c.updatePrompt()
 	return nil
 }
-func (c *Console) executeEnsureCommand(words []string) (err error) {
+func (c *Console) executeEnsureCommand(cmd string, args []string) (err error) {
 	if c.client == nil {
 		return errNotConnected
 	}
-	if len(words) != 3 {
+	if len(args) != 2 {
 		return errors.New("Usage: :ensure db/frame name")
 	}
 
-	what := words[2]
-	which := words[1]
+	what := args[1]
+	which := args[0]
 	switch which {
 	case "db":
 		databaseName := what
@@ -209,6 +231,7 @@ func (c *Console) executeEnsureCommand(words []string) (err error) {
 		}
 		c.prompt.database = databaseName
 		c.updatePrompt()
+		err = c.updateSchema()
 	case "frame":
 		if c.database == nil {
 			return errNoDatabase
@@ -219,20 +242,14 @@ func (c *Console) executeEnsureCommand(words []string) (err error) {
 			return err
 		}
 		err = c.client.EnsureFrameExists(frame)
-		if err != nil {
-			return err
-		}
 	default:
 		return fmt.Errorf("Don't know how to ensure %s", which)
 	}
-	return nil
+	return err
 }
 
-func (c *Console) executeSaveCommand(words []string) error {
-	if len(words) == 2 {
-		c.sessionName = words[1]
-	}
-	if len(words) > 1 {
+func (c *Console) executeSaveCommand(cmd string, args []string) error {
+	if len(args) > 0 {
 		return errors.New("Usage: :save")
 	}
 	if c.sessionsDirectory == "" {
@@ -253,17 +270,54 @@ func (c *Console) executeSaveCommand(words []string) error {
 	return nil
 }
 
-func (c *Console) executeSessionCommand(words []string) error {
-	switch len(words) {
-	case 1:
+func (c *Console) executeSessionCommand(cmd string, args []string) error {
+	switch len(args) {
+	case 0:
 		c.sessionName = autoSessionName()
-	case 2:
-		c.sessionName = words[1]
+	case 1:
+		c.sessionName = args[1]
 	default:
 		return errors.New("Usage: :session [session name]")
 	}
 	// reset session
 	c.session = []string{}
+	return nil
+}
+
+func (c *Console) executeSchemaCommand(cmd string, args []string) error {
+	// TODO: check number of args
+	// 0: schema for all
+	// 1: schema for the given db
+	if len(args) > 1 {
+		return errors.New("usage: :schema [database name | *]")
+	}
+	dbname := ""
+	if len(args) == 1 {
+		if args[0] != "*" {
+			dbname = args[0]
+		}
+	} else {
+		if c.database != nil {
+			dbname = c.database.GetName()
+		}
+	}
+	err := c.updateSchema()
+	if err != nil {
+		return err
+	}
+	for _, db := range c.schema.DBs {
+		if dbname == "" || dbname == db.Name {
+			frameList := make([]string, 0, len(db.Frames))
+			for _, frame := range db.Frames {
+				frameList = append(frameList, frame.Name)
+			}
+			if dbname != "" {
+				fmt.Printf("[%s]\n", strings.Join(frameList, ", "))
+			} else {
+				fmt.Printf("%s [%s]\n", db.Name, strings.Join(frameList, ", "))
+			}
+		}
+	}
 	return nil
 }
 
@@ -304,6 +358,18 @@ func (c *Console) ensureHomeDirectoryExists() {
 			printWarning(fmt.Sprintf("Cannot create %s, unsetting it.", c.sessionsDirectory))
 		}
 	}
+}
+
+func (c *Console) updateSchema() error {
+	if c.client == nil {
+		return errNotConnected
+	}
+	schema, err := c.client.Schema()
+	if err != nil {
+		return err
+	}
+	c.schema = schema
+	return nil
 }
 
 func printResponse(response *pilosa.QueryResponse) {
