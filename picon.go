@@ -51,7 +51,7 @@ func NewConsole() (*Console, error) {
 
 	return &Console{
 		inst:   inst,
-		prompt: &promptInfo{address: "?", database: "?"},
+		prompt: &promptInfo{address: "(not connected)", database: "(no DB)"},
 	}, nil
 }
 
@@ -91,13 +91,17 @@ func (c *Console) Main() {
 		case strings.HasPrefix(line, "#"):
 			c.inst.Operation.SetBuffer("# ")
 		case strings.HasPrefix(line, ":"):
-			c.executeCommand(line)
+			err = c.executeCommand(line)
 		case line == "_":
 			if c.lastResponse != nil {
 				printResponse(c.lastResponse)
 			}
 		default:
-			c.executeQuery(line)
+			err = c.executeQuery(line)
+		}
+
+		if err != nil {
+			printError(err)
 		}
 	}
 exit:
@@ -109,106 +113,102 @@ func listDatabases() func(string) []string {
 	}
 }
 
-func (c *Console) executeCommand(line string) {
-	var err error
-	parts := strings.Fields(line)
-	command := parts[0]
+func (c *Console) executeCommand(line string) (err error) {
+	words := strings.Fields(line)
+	command := words[0]
 	switch command {
 	case ":connect":
-		uri, err := pilosa.NewURIFromAddress(parts[1])
-		if err != nil {
-			printError(err)
-			return
-		}
-		c.prompt.address = uri.GetNormalizedAddress()
-		c.client = pilosa.NewClientWithAddress(uri)
-		c.updatePrompt()
+		err = c.executeConnectCommand(words)
 	case ":use":
-		if c.client == nil {
-			printError(errNotConnected)
-			return
-		}
-		databaseName := parts[1]
-		c.database, err = pilosa.NewDatabase(databaseName)
+		err = c.executeUseCommand(words)
+	case ":ensure":
+		err = c.executeEnsureCommand(words)
+	default:
+		err = fmt.Errorf("Invalid command: %s", command)
+	}
+	return err
+}
+
+func (c *Console) executeConnectCommand(words []string) error {
+	uri, err := pilosa.NewURIFromAddress(words[1])
+	if err != nil {
+		return err
+	}
+	c.prompt.address = uri.GetNormalizedAddress()
+	c.client = pilosa.NewClientWithAddress(uri)
+	c.updatePrompt()
+	return nil
+}
+
+func (c *Console) executeUseCommand(words []string) (err error) {
+	if c.client == nil {
+		return errNotConnected
+	}
+	databaseName := words[1]
+	c.database, err = pilosa.NewDatabase(databaseName)
+	if err != nil {
+		return err
+	}
+	c.prompt.database = databaseName
+	c.updatePrompt()
+	return nil
+}
+func (c *Console) executeEnsureCommand(words []string) (err error) {
+	if c.client == nil {
+		return errNotConnected
+	}
+	if len(words) != 3 {
+		return errors.New("Usage: :ensure db/frame name")
+	}
+
+	what := words[2]
+	which := words[1]
+	switch which {
+	case "db":
+		databaseName := what
+		c.database, err = pilosa.NewDatabase(what)
 		if err != nil {
-			printError(err)
-			return
+			return err
+		}
+		err = c.client.EnsureDatabaseExists(c.database)
+		if err != nil {
+			return err
 		}
 		c.prompt.database = databaseName
 		c.updatePrompt()
-	case ":ensure":
-		if len(parts) != 3 {
-			printError(errors.New("Usage: :ensure db/frame name"))
-			return
+	case "frame":
+		if c.database == nil {
+			return errNoDatabase
 		}
-		which := parts[1]
-		what := parts[2]
-		switch which {
-		case "db":
-			if c.client == nil {
-				printError(errNotConnected)
-				return
-			}
-			databaseName := what
-			c.database, err = pilosa.NewDatabase(what)
-			if err != nil {
-				printError(err)
-				return
-			}
-			err = c.client.EnsureDatabaseExists(c.database)
-			if err != nil {
-				printError(err)
-				return
-			}
-			c.prompt.database = databaseName
-			c.updatePrompt()
-		case "frame":
-			if c.client == nil {
-				printError(errNotConnected)
-				return
-			}
-			if c.database == nil {
-				printError(errNoDatabase)
-				return
-			}
-			frameName := what
-			frame, err := c.database.Frame(frameName)
-			if err != nil {
-				printError(err)
-				return
-			}
-			if err != nil {
-				printError(err)
-				return
-			}
-			err = c.client.EnsureFrameExists(frame)
-			if err != nil {
-				printError(err)
-				return
-			}
-		default:
-			printError(fmt.Errorf("Don't know how to ensure %s", which))
+		frameName := what
+		frame, err := c.database.Frame(frameName)
+		if err != nil {
+			return err
+		}
+		err = c.client.EnsureFrameExists(frame)
+		if err != nil {
+			return err
 		}
 	default:
-		printError(fmt.Errorf("Invalid command: %s", command))
+		return fmt.Errorf("Don't know how to ensure %s", which)
 	}
+	return nil
 }
-func (c *Console) executeQuery(line string) {
+
+func (c *Console) executeQuery(line string) error {
 	if c.client == nil {
-		printError(errNotConnected)
-		return
+		return errNotConnected
 	}
 	if c.database == nil {
-		printError(errNoDatabase)
-		return
+		return errNoDatabase
 	}
 	response, err := c.client.Query(c.database, line)
 	if err != nil {
-		printError(err)
-		return
+		return err
 	}
 	c.lastResponse = response
 	printResponse(response)
+	return nil
 }
 
 func (c *Console) updatePrompt() {
@@ -230,7 +230,11 @@ func printResponse(response *pilosa.QueryResponse) {
 }
 
 func printError(err error) {
-	fmt.Printf("\033[0;31m%s\033[0m\n", err)
+	fmt.Printf(colorString(fgRed, err.Error()))
+}
+
+func colorString(color Ansi, msg string) string {
+	return fmt.Sprintf("%s%s%s", color, msg, attrReset)
 }
 
 func printResult(index int, count int, result *pilosa.QueryResult) {
@@ -259,7 +263,6 @@ func printResult(index int, count int, result *pilosa.QueryResult) {
 		canPrint = true
 	}
 	if canPrint {
-		lines = append(lines, "")
 		fmt.Println(strings.Join(lines, "\n"))
 	}
 }
