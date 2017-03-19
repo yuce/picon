@@ -5,8 +5,11 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"os"
+	"path"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/chzyer/readline"
 	pilosa "github.com/pilosa/go-client-pilosa"
@@ -18,14 +21,18 @@ type promptInfo struct {
 }
 
 type Console struct {
-	client       *pilosa.Client
-	database     *pilosa.Database
-	prompt       *promptInfo
-	lastResponse *pilosa.QueryResponse
-	inst         *readline.Instance
+	client            *pilosa.Client
+	database          *pilosa.Database
+	prompt            *promptInfo
+	lastResponse      *pilosa.QueryResponse
+	inst              *readline.Instance
+	homeDirectory     string
+	sessionsDirectory string
+	session           []string
+	sessionName       string
 }
 
-func NewConsole() (*Console, error) {
+func NewConsole(homeDirectory string) (*Console, error) {
 	completer := readline.NewPrefixCompleter(
 		readline.PcItem(":exit"),
 		readline.PcItem(":connect"),
@@ -37,21 +44,32 @@ func NewConsole() (*Console, error) {
 			readline.PcItem("db"),
 			readline.PcItem("frame")),
 		readline.PcItem(":schema"),
+		readline.PcItem(":save"),
+		readline.PcItem(":session"),
 	)
-	inst, err := readline.NewEx(&readline.Config{
-		HistoryFile:       "/tmp/picon.tmp",
+	config := &readline.Config{
 		AutoComplete:      completer,
 		InterruptPrompt:   "^C",
 		EOFPrompt:         ":exit",
 		HistorySearchFold: true,
-	})
+	}
+	sessionsDirectory := ""
+	if homeDirectory != "" {
+		config.HistoryFile = path.Join(homeDirectory, "history")
+		sessionsDirectory = path.Join(homeDirectory, "sessions")
+	}
+	inst, err := readline.NewEx(config)
 	if err != nil {
 		return nil, err
 	}
 
 	return &Console{
-		inst:   inst,
-		prompt: &promptInfo{address: "(not connected)", database: "(no DB)"},
+		inst:              inst,
+		prompt:            &promptInfo{address: "(not connected)", database: "(no DB)"},
+		homeDirectory:     homeDirectory,
+		sessionsDirectory: sessionsDirectory,
+		session:           []string{},
+		sessionName:       autoSessionName(),
 	}, nil
 }
 
@@ -60,6 +78,7 @@ func (c *Console) Close() {
 }
 
 func (c *Console) Main() {
+	c.ensureHomeDirectoryExists()
 	log.SetOutput(c.inst.Stderr())
 	c.updatePrompt()
 	lines := []string{}
@@ -86,6 +105,7 @@ func (c *Console) Main() {
 		}
 		switch {
 		case line == "":
+			continue
 		case line == ":exit":
 			goto exit
 		case strings.HasPrefix(line, "#"):
@@ -102,7 +122,16 @@ func (c *Console) Main() {
 
 		if err != nil {
 			printError(err)
+		} else {
+			// do not save session commands to the session
+			for _, s := range []string{":save", ":load", ":session"} {
+				if strings.HasPrefix(line, s) {
+					goto session_exit
+				}
+			}
+			c.session = append(c.session, line)
 		}
+	session_exit:
 	}
 exit:
 }
@@ -123,6 +152,10 @@ func (c *Console) executeCommand(line string) (err error) {
 		err = c.executeUseCommand(words)
 	case ":ensure":
 		err = c.executeEnsureCommand(words)
+	case ":save":
+		err = c.executeSaveCommand(words)
+	case ":session":
+		err = c.executeSessionCommand(words)
 	default:
 		err = fmt.Errorf("Invalid command: %s", command)
 	}
@@ -195,6 +228,45 @@ func (c *Console) executeEnsureCommand(words []string) (err error) {
 	return nil
 }
 
+func (c *Console) executeSaveCommand(words []string) error {
+	if len(words) == 2 {
+		c.sessionName = words[1]
+	}
+	if len(words) > 1 {
+		return errors.New("Usage: :save")
+	}
+	if c.sessionsDirectory == "" {
+		return errors.New("session directory was not set")
+	}
+	path := path.Join(c.sessionsDirectory, c.sessionName)
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	for _, line := range c.session {
+		_, err := f.WriteString(fmt.Sprintf("%s\n", line))
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *Console) executeSessionCommand(words []string) error {
+	switch len(words) {
+	case 1:
+		c.sessionName = autoSessionName()
+	case 2:
+		c.sessionName = words[1]
+	default:
+		return errors.New("Usage: :session [session name]")
+	}
+	// reset session
+	c.session = []string{}
+	return nil
+}
+
 func (c *Console) executeQuery(line string) error {
 	if c.client == nil {
 		return errNotConnected
@@ -216,6 +288,24 @@ func (c *Console) updatePrompt() {
 		c.prompt.address, c.prompt.database))
 }
 
+func (c *Console) ensureHomeDirectoryExists() {
+	if c.homeDirectory != "" {
+		err := os.MkdirAll(c.homeDirectory, 0700)
+		if err != nil {
+			c.homeDirectory = ""
+			printWarning(fmt.Sprintf("Cannot create %s, unsetting it.", c.homeDirectory))
+			return
+		}
+	}
+	if c.sessionsDirectory != "" {
+		err := os.MkdirAll(c.sessionsDirectory, 0700)
+		if err != nil {
+			c.sessionsDirectory = ""
+			printWarning(fmt.Sprintf("Cannot create %s, unsetting it.", c.sessionsDirectory))
+		}
+	}
+}
+
 func printResponse(response *pilosa.QueryResponse) {
 	if !response.IsSuccess {
 		printError(errors.New(response.ErrorMessage))
@@ -230,7 +320,11 @@ func printResponse(response *pilosa.QueryResponse) {
 }
 
 func printError(err error) {
-	fmt.Printf(colorString(fgRed, err.Error()))
+	fmt.Println(colorString(fgRed, err.Error()))
+}
+
+func printWarning(msg string) {
+	fmt.Println(colorString(fgRed, msg))
 }
 
 func colorString(color Ansi, msg string) string {
@@ -281,4 +375,8 @@ func bitsToString(bits []uint64) string {
 		parts = append(parts, strconv.Itoa(int(v)))
 	}
 	return strings.Join(parts, ", ")
+}
+
+func autoSessionName() string {
+	return time.Now().Format("2006-01-02_15-04-05")
 }
