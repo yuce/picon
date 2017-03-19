@@ -9,6 +9,8 @@ import (
 	"bitbucket.com/yuce/picon"
 )
 
+const Version = "0.1.0"
+
 func main() {
 	var err error
 	defaultHomeDir := ""
@@ -21,6 +23,14 @@ func main() {
 		fmt.Println("ERROR: ", err)
 		os.Exit(1)
 	}
+	fmt.Printf(`       _ 
+ _ __ (_) ___ ___  _ __  
+| '_ \| |/ __/ _ \| '_ \ 
+| |_) | | (_| (_) | | | |
+| .__/|_|\___\___/|_| |_|
+|_|                 %s
+
+	`, Version)
 	console.Main()
 	defer console.Close()
 }
