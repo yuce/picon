@@ -4,7 +4,7 @@
 
 Although there is inital support for Glide, this project depends on a development branch of Pilosa Go client which is not accessible to Glide.
 
-PiCon can be install to a custom $GOPATH as follows:
+PiCon can be installed to a custom $GOPATH as follows:
 ```
 $ export GOPATH=$HOME/picon
 $ mkdir -p $GOPATH/src/github.com/pilosa && cd $GOPATH/src/github.com/pilosa
@@ -21,13 +21,13 @@ $ ls picon
 
 You can run the console with `./picon`. To get a list of commands, hit `:` and then `Tab`. To exit, you can type `:exit` or hit `Ctrl+C`.
 
-- Commands start with `:`
-- Notes start with `#`
+- Commands start with `:`.
+- Notes start with `#`.
 - Queries can be run directly.
-- In order to get multiline commands/queries, finish a line with backslash (`\`).
-- Up/down arrow keys can be used to access the history
+- In order to enter multiline commands/queries, finish a line with backslash (`\`).
+- Up/down arrow keys can be used to access the history.
 - `:use` command supports database name completion.
-- If a command is made up of more than one word, they are autocompleted.
+- If a command is made up of more than one word, they can be autocompleted.
 
 Sample workflow:
 
@@ -36,7 +36,7 @@ Sample workflow:
 > :ensure db mydb
 > :ensure frame myframe
 > SetBit(id=1, frame='myframe', profileID=100)
-> Bitmap(id=1, frame='myfram')
-... Some outpur
+> Bitmap(id=1, frame='myframe')
+... Some output
 ```
 
