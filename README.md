@@ -7,11 +7,12 @@ Although there is inital support for Glide, this project depends on a developmen
 PiCon can be install to a custom $GOPATH as follows:
 ```
 $ export GOPATH=$HOME/picon
-$ mkdir -p $GOPATH/src/github.com/pilosa && cd $GOPATH/src/github.com
+$ mkdir -p $GOPATH/src/github.com/pilosa && cd $GOPATH/src/github.com/pilosa
 $ git clone git@github.com:yuce/go-client-pilosa.git
 $ cd go-client-pilosa && git checkout v2
 $ mkdir -p $GOPATH/src/bitbucket.org/yuce && cd $GOPATH/src/bitbucket.org/yuce
 $ git clone git@bitbucket.org:yuce/picon.git && cd picon
+$ go get bitbucket.org/yuce/picon/cmd/picon
 $ go build bitbucket.org/yuce/picon/cmd/picon
 $ ls picon
 ```
