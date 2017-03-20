@@ -6,7 +6,7 @@ import (
 	"os/user"
 	"path"
 
-	"bitbucket.com/yuce/picon"
+	"bitbucket.org/yuce/picon"
 )
 
 const Version = "0.1.0"
