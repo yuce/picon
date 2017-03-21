@@ -2,4 +2,4 @@
 .PHONY: build
 
 build:
-	go build bitbucket.com/yuce/picon/cmd/picon
+	go build bitbucket.org/yuce/picon/cmd/picon
