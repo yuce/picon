@@ -187,7 +187,7 @@ func (c *Console) executeConnectCommand(cmd string, args []string) error {
 		c.client = nil
 		return err
 	}
-	c.prompt.address = uri.GetNormalizedAddress()
+	c.prompt.address = uri.NormalizedAddress()
 	c.updatePrompt()
 	return nil
 }
@@ -298,7 +298,7 @@ func (c *Console) executeSchemaCommand(cmd string, args []string) error {
 		}
 	} else {
 		if c.database != nil {
-			dbname = c.database.GetName()
+			dbname = c.database.Name()
 		}
 	}
 	err := c.updateSchema()
@@ -328,7 +328,7 @@ func (c *Console) executeQuery(line string) error {
 	if c.database == nil {
 		return errNoDatabase
 	}
-	response, err := c.client.Query(c.database, line)
+	response, err := c.client.QueryRaw(c.database, line)
 	if err != nil {
 		return err
 	}
