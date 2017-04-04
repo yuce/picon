@@ -187,7 +187,7 @@ func (c *Console) executeConnectCommand(cmd string, args []string) error {
 		c.client = nil
 		return err
 	}
-	c.prompt.address = uri.NormalizedAddress()
+	c.prompt.address = uri.Normalize()
 	c.updatePrompt()
 	return nil
 }
@@ -200,7 +200,7 @@ func (c *Console) executeUseCommand(cmd string, args []string) (err error) {
 		return errNotConnected
 	}
 	databaseName := args[0]
-	c.database, err = pilosa.NewDatabase(databaseName)
+	c.database, err = pilosa.NewDatabase(databaseName, nil)
 	if err != nil {
 		return err
 	}
@@ -221,7 +221,7 @@ func (c *Console) executeEnsureCommand(cmd string, args []string) (err error) {
 	switch which {
 	case "db":
 		databaseName := what
-		c.database, err = pilosa.NewDatabase(what)
+		c.database, err = pilosa.NewDatabase(what, nil)
 		if err != nil {
 			return err
 		}
@@ -237,7 +237,7 @@ func (c *Console) executeEnsureCommand(cmd string, args []string) (err error) {
 			return errNoDatabase
 		}
 		frameName := what
-		frame, err := c.database.Frame(frameName)
+		frame, err := c.database.Frame(frameName, nil)
 		if err != nil {
 			return err
 		}
@@ -328,7 +328,7 @@ func (c *Console) executeQuery(line string) error {
 	if c.database == nil {
 		return errNoDatabase
 	}
-	response, err := c.client.QueryRaw(c.database, line)
+	response, err := c.client.Query(c.database.RawQuery(line), nil)
 	if err != nil {
 		return err
 	}
@@ -373,15 +373,13 @@ func (c *Console) updateSchema() error {
 }
 
 func printResponse(response *pilosa.QueryResponse) {
-	if !response.IsSuccess {
+	if !response.Success {
 		printError(errors.New(response.ErrorMessage))
 		return
 	}
-	results := response.Results
-	if results != nil {
-		for i, result := range results {
-			printResult(i, len(response.Results), result)
-		}
+	results := response.Results()
+	for i, result := range results {
+		printResult(i, len(results), result)
 	}
 }
 
