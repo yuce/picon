@@ -378,10 +378,8 @@ func printResponse(response *pilosa.QueryResponse) {
 		return
 	}
 	results := response.Results()
-	if results != nil {
-		for i, result := range results {
-			printResult(i, len(results), result)
-		}
+	for i, result := range results {
+		printResult(i, len(results), result)
 	}
 }
 
