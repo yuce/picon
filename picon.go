@@ -400,15 +400,15 @@ func printResult(index int, count int, result *pilosa.QueryResult) {
 	lines := []string{fmt.Sprintf(headerFmt, index)}
 	canPrint := false
 	switch {
-	case result.BitmapResult != nil:
-		if len(attributesToString(result.BitmapResult.Attributes)) > 0 {
+	case result.Bitmap != nil:
+		if len(attributesToString(result.Bitmap.Attributes)) > 0 {
 			lines = append(lines,
-				fmt.Sprintf("\tAttributes: %s", attributesToString(result.BitmapResult.Attributes)))
+				fmt.Sprintf("\tAttributes: %s", attributesToString(result.Bitmap.Attributes)))
 			canPrint = true
 		}
-		if len(bitsToString(result.BitmapResult.Bits)) > 0 {
+		if len(bitsToString(result.Bitmap.Bits)) > 0 {
 			lines = append(lines,
-				fmt.Sprintf("\tBits      : %s", bitsToString(result.BitmapResult.Bits)))
+				fmt.Sprintf("\tBits      : %s", bitsToString(result.Bitmap.Bits)))
 			canPrint = true
 		}
 	case result.CountItems != nil && len(result.CountItems) > 0:
