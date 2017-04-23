@@ -26,16 +26,16 @@ You can run the console with `./picon`. To get a list of commands, hit `:` and t
 - Queries can be run directly.
 - In order to enter multiline commands/queries, finish a line with backslash (`\`).
 - Up/down arrow keys can be used to access the history.
-- `:use` command supports database name completion.
+- `:use` command supports index name completion.
 - If a command is made up of more than one word, they can be autocompleted.
 
 Sample workflow:
 
 ```
 > :connect :10101
-> :ensure db mydb
+> :ensure index myindex
 > :ensure frame myframe
-> SetBit(id=1, frame='myframe', profileID=100)
+> SetBit(id=1, frame='myframe', col_id=100)
 > Bitmap(id=1, frame='myframe')
 ... Some output
 ```

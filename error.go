@@ -4,5 +4,5 @@ import "errors"
 
 var (
 	errNotConnected = errors.New("You must :connect to a server")
-	errNoDatabase   = errors.New("You must :use a database")
+	errNoIndex      = errors.New("You must :use an index")
 )

@@ -16,13 +16,13 @@ import (
 )
 
 type promptInfo struct {
-	address  string
-	database string
+	address string
+	index   string
 }
 
 type Console struct {
 	client            *pilosa.Client
-	database          *pilosa.Database
+	index             *pilosa.Index
 	prompt            *promptInfo
 	lastResponse      *pilosa.QueryResponse
 	inst              *readline.Instance
@@ -39,7 +39,7 @@ func NewConsole(homeDirectory string) (*Console, error) {
 		sessionsDirectory = path.Join(homeDirectory, "sessions")
 	}
 	console := &Console{
-		prompt:            &promptInfo{address: "(not connected)", database: "(no DB)"},
+		prompt:            &promptInfo{address: "(not connected)", index: "(no index)"},
 		homeDirectory:     homeDirectory,
 		sessionsDirectory: sessionsDirectory,
 		session:           []string{},
@@ -48,12 +48,12 @@ func NewConsole(homeDirectory string) (*Console, error) {
 	completer := readline.NewPrefixCompleter(
 		readline.PcItem(":exit"),
 		readline.PcItem(":connect"),
-		readline.PcItem(":use", readline.PcItemDynamic(console.listDatabases())),
+		readline.PcItem(":use", readline.PcItemDynamic(console.listIndexes())),
 		readline.PcItem(":create",
-			readline.PcItem("db"),
+			readline.PcItem("index"),
 			readline.PcItem("frame")),
 		readline.PcItem(":ensure",
-			readline.PcItem("db"),
+			readline.PcItem("index"),
 			readline.PcItem("frame")),
 		readline.PcItem(":schema"),
 		readline.PcItem(":save"),
@@ -139,15 +139,15 @@ func (c *Console) Main() {
 exit:
 }
 
-func (c *Console) listDatabases() func(string) []string {
+func (c *Console) listIndexes() func(string) []string {
 	return func(line string) []string {
-		dbnames := []string{}
+		indexNames := []string{}
 		if c.schema != nil {
-			for _, db := range c.schema.DBs {
-				dbnames = append(dbnames, db.Name)
+			for _, index := range c.schema.Indexes {
+				indexNames = append(indexNames, index.Name)
 			}
 		}
-		return dbnames
+		return indexNames
 	}
 }
 
@@ -181,7 +181,7 @@ func (c *Console) executeConnectCommand(cmd string, args []string) error {
 	if err != nil {
 		return err
 	}
-	c.client = pilosa.NewClientWithAddress(uri)
+	c.client = pilosa.NewClientWithURI(uri)
 	err = c.updateSchema()
 	if err != nil {
 		c.client = nil
@@ -194,54 +194,55 @@ func (c *Console) executeConnectCommand(cmd string, args []string) error {
 
 func (c *Console) executeUseCommand(cmd string, args []string) (err error) {
 	if len(args) != 1 {
-		return errors.New("usage: :use db-name")
+		return errors.New("usage: :use index-name")
 	}
 	if c.client == nil {
 		return errNotConnected
 	}
-	databaseName := args[0]
-	c.database, err = pilosa.NewDatabase(databaseName, nil)
+	indexName := args[0]
+	c.index, err = pilosa.NewIndex(indexName, nil)
 	if err != nil {
 		return err
 	}
-	c.prompt.database = databaseName
+	c.prompt.index = indexName
 	c.updatePrompt()
 	return nil
 }
+
 func (c *Console) executeEnsureCommand(cmd string, args []string) (err error) {
 	if c.client == nil {
 		return errNotConnected
 	}
 	if len(args) != 2 {
-		return errors.New("Usage: :ensure db/frame name")
+		return errors.New("Usage: :ensure {index | frame} name")
 	}
 
 	what := args[1]
 	which := args[0]
 	switch which {
-	case "db":
-		databaseName := what
-		c.database, err = pilosa.NewDatabase(what, nil)
+	case "index":
+		indexName := what
+		c.index, err = pilosa.NewIndex(what, nil)
 		if err != nil {
 			return err
 		}
-		err = c.client.EnsureDatabaseExists(c.database)
+		err = c.client.EnsureIndex(c.index)
 		if err != nil {
 			return err
 		}
-		c.prompt.database = databaseName
+		c.prompt.index = indexName
 		c.updatePrompt()
 		err = c.updateSchema()
 	case "frame":
-		if c.database == nil {
-			return errNoDatabase
+		if c.index == nil {
+			return errNoIndex
 		}
 		frameName := what
-		frame, err := c.database.Frame(frameName, nil)
+		frame, err := c.index.Frame(frameName, nil)
 		if err != nil {
 			return err
 		}
-		err = c.client.EnsureFrameExists(frame)
+		err = c.client.EnsureFrame(frame)
 	default:
 		return fmt.Errorf("Don't know how to ensure %s", which)
 	}
@@ -287,34 +288,34 @@ func (c *Console) executeSessionCommand(cmd string, args []string) error {
 func (c *Console) executeSchemaCommand(cmd string, args []string) error {
 	// TODO: check number of args
 	// 0: schema for all
-	// 1: schema for the given db
+	// 1: schema for the given index
 	if len(args) > 1 {
-		return errors.New("usage: :schema [database name | *]")
+		return errors.New("usage: :schema [index name | *]")
 	}
-	dbname := ""
+	indexName := ""
 	if len(args) == 1 {
 		if args[0] != "*" {
-			dbname = args[0]
+			indexName = args[0]
 		}
 	} else {
-		if c.database != nil {
-			dbname = c.database.Name()
+		if c.index != nil {
+			indexName = c.index.Name()
 		}
 	}
 	err := c.updateSchema()
 	if err != nil {
 		return err
 	}
-	for _, db := range c.schema.DBs {
-		if dbname == "" || dbname == db.Name {
-			frameList := make([]string, 0, len(db.Frames))
-			for _, frame := range db.Frames {
+	for _, index := range c.schema.Indexes {
+		if indexName == "" || indexName == index.Name {
+			frameList := make([]string, 0, len(index.Frames))
+			for _, frame := range index.Frames {
 				frameList = append(frameList, frame.Name)
 			}
-			if dbname != "" {
+			if indexName != "" {
 				fmt.Printf("[%s]\n", strings.Join(frameList, ", "))
 			} else {
-				fmt.Printf("%s [%s]\n", db.Name, strings.Join(frameList, ", "))
+				fmt.Printf("%s [%s]\n", index.Name, strings.Join(frameList, ", "))
 			}
 		}
 	}
@@ -325,10 +326,10 @@ func (c *Console) executeQuery(line string) error {
 	if c.client == nil {
 		return errNotConnected
 	}
-	if c.database == nil {
-		return errNoDatabase
+	if c.index == nil {
+		return errNoIndex
 	}
-	response, err := c.client.Query(c.database.RawQuery(line), nil)
+	response, err := c.client.Query(c.index.RawQuery(line), nil)
 	if err != nil {
 		return err
 	}
@@ -339,7 +340,7 @@ func (c *Console) executeQuery(line string) error {
 
 func (c *Console) updatePrompt() {
 	c.inst.SetPrompt(fmt.Sprintf("\033[36m%s\033[0m/\033[1m\033[32m%s\033[37m>\033[0m ",
-		c.prompt.address, c.prompt.database))
+		c.prompt.address, c.prompt.index))
 }
 
 func (c *Console) ensureHomeDirectoryExists() {
@@ -400,15 +401,15 @@ func printResult(index int, count int, result *pilosa.QueryResult) {
 	lines := []string{fmt.Sprintf(headerFmt, index)}
 	canPrint := false
 	switch {
-	case result.BitmapResult != nil:
-		if len(attributesToString(result.BitmapResult.Attributes)) > 0 {
+	case result.Bitmap != nil:
+		if len(attributesToString(result.Bitmap.Attributes)) > 0 {
 			lines = append(lines,
-				fmt.Sprintf("\tAttributes: %s", attributesToString(result.BitmapResult.Attributes)))
+				fmt.Sprintf("\tAttributes: %s", attributesToString(result.Bitmap.Attributes)))
 			canPrint = true
 		}
-		if len(bitsToString(result.BitmapResult.Bits)) > 0 {
+		if len(bitsToString(result.Bitmap.Bits)) > 0 {
 			lines = append(lines,
-				fmt.Sprintf("\tBits      : %s", bitsToString(result.BitmapResult.Bits)))
+				fmt.Sprintf("\tBits      : %s", bitsToString(result.Bitmap.Bits)))
 			canPrint = true
 		}
 	case result.CountItems != nil && len(result.CountItems) > 0:
