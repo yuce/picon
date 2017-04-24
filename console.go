@@ -44,6 +44,12 @@ func NewConsole(homeDirectory string) (*Console, error) {
 		readline.PcItem(":ensure",
 			readline.PcItem("index"),
 			readline.PcItem("frame")),
+		readline.PcItem(":create",
+			readline.PcItem("index"),
+			readline.PcItem("frame")),
+		readline.PcItem(":delete",
+			readline.PcItem("index"),
+			readline.PcItem("frame")),
 		readline.PcItem(":schema"),
 		readline.PcItem(":save"),
 		readline.PcItem(":session"),
@@ -149,7 +155,11 @@ func (c *Console) executeCommand(line string) (err error) {
 	case ":use":
 		err = c.executeUseCommand(cmd, args[1:])
 	case ":ensure":
-		err = c.executeEnsureCommand(cmd, args[1:])
+		err = c.executeCreateOrEnsureCommand(cmd, args[1:])
+	case ":create":
+		err = c.executeCreateOrEnsureCommand(cmd, args[1:])
+	case ":delete":
+		err = c.executeDeleteCommand(cmd, args[1:])
 	case ":save":
 		err = c.executeSaveCommand(cmd, args[1:])
 	case ":session":
@@ -198,7 +208,7 @@ func (c *Console) executeUseCommand(cmd string, args []string) (err error) {
 	return nil
 }
 
-func (c *Console) executeEnsureCommand(cmd string, args []string) (err error) {
+func (c *Console) executeCreateOrEnsureCommand(cmd string, args []string) (err error) {
 	if c.client == nil {
 		return errNotConnected
 	}
@@ -219,18 +229,24 @@ func (c *Console) executeEnsureCommand(cmd string, args []string) (err error) {
 		if err != nil {
 			return err
 		}
-		indexName := what
 		c.index, err = pilosa.NewIndex(what, options)
 		if err != nil {
 			return err
 		}
-		err = c.client.EnsureIndex(c.index)
+		switch cmd {
+		case ":create":
+			err = c.client.CreateIndex(c.index)
+		case ":ensure":
+			err = c.client.EnsureIndex(c.index)
+		default:
+			return fmt.Errorf("Invalid command in this context: %s", cmd)
+		}
 		if err != nil {
 			return err
 		}
-		c.prompt.index = indexName
+		c.prompt.index = what
 		c.updatePrompt()
-		err = c.updateSchema()
+		return c.updateSchema()
 	case "frame":
 		if c.index == nil {
 			return errNoIndex
@@ -239,14 +255,67 @@ func (c *Console) executeEnsureCommand(cmd string, args []string) (err error) {
 		if err != nil {
 			return err
 		}
-		frameName := what
-		frame, err := c.index.Frame(frameName, options)
+		frame, err := c.index.Frame(what, options)
 		if err != nil {
 			return err
 		}
-		err = c.client.EnsureFrame(frame)
+		switch cmd {
+		case ":create":
+			err = c.client.CreateFrame(frame)
+		case ":ensure":
+			err = c.client.EnsureFrame(frame)
+		default:
+			return fmt.Errorf("Invalid command in this context: %s", cmd)
+		}
+		return err
 	default:
 		return fmt.Errorf("Don't know how to ensure %s", which)
+	}
+}
+
+func (c *Console) executeDeleteCommand(cmd string, args []string) (err error) {
+	if c.client == nil {
+		return errNotConnected
+	}
+	if len(args) < 2 {
+		return errors.New("Usage: :delete {index | frame} name1, ...")
+	}
+
+	which := args[0]
+	switch which {
+	case "index":
+		for _, what := range args[1:] {
+			c.index, err = pilosa.NewIndex(what, nil)
+			if err != nil {
+				printWarning(fmt.Sprintf("Skipping invalid index `%s`: %s", what, err))
+				continue
+			}
+			err = c.client.DeleteIndex(c.index)
+			if err != nil {
+				printError(fmt.Errorf("Error deleting index `%s`: %s", what, err))
+				continue
+			}
+		}
+		err = c.updateSchema()
+	case "frame":
+		if c.index == nil {
+			return errNoIndex
+		}
+		for _, what := range args[1:] {
+			frame, err := c.index.Frame(what, nil)
+			if err != nil {
+				printWarning(fmt.Sprintf("Skipping invalid index `%s`: %s", what, err))
+				continue
+			}
+			err = c.client.DeleteFrame(frame)
+			if err != nil {
+				printError(fmt.Errorf("Error deleting frame `%s`: %s", what, err))
+				continue
+			}
+		}
+		err = nil
+	default:
+		return fmt.Errorf("Don't know how to delete %s", which)
 	}
 	return err
 }
