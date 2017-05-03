@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/chzyer/readline"
-	pilosa "github.com/pilosa/go-client-pilosa"
+	pilosa "github.com/pilosa/go-pilosa"
 )
 
 type Console struct {
@@ -213,7 +213,7 @@ func (c *Console) executeCreateOrEnsureCommand(cmd string, args []string) (err e
 		return errNotConnected
 	}
 	if len(args) < 2 {
-		return errors.New("Usage: :ensure {index | frame} name [option1=value1, ...]")
+		return fmt.Errorf("Usage: %s {index | frame} name [option1=value1, ...]", cmd)
 	}
 
 	rawOptions, err := parseOptions(args[2:])

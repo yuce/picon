@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	pilosa "github.com/pilosa/go-client-pilosa"
+	pilosa "github.com/pilosa/go-pilosa"
 )
 
 type promptInfo struct {
