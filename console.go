@@ -75,23 +75,7 @@ func NewConsole(homeDirectory string) (*Console, error) {
 		session:           []string{},
 		sessionName:       autoSessionName(),
 	}
-	completer := readline.NewPrefixCompleter(
-		readline.PcItem(":exit"),
-		readline.PcItem(":connect", readline.PcItemDynamic(console.listConnections())),
-		readline.PcItem(":use", readline.PcItemDynamic(console.listIndexes())),
-		readline.PcItem(":ensure",
-			readline.PcItem("index"),
-			readline.PcItem("frame")),
-		readline.PcItem(":create",
-			readline.PcItem("index"),
-			readline.PcItem("frame")),
-		readline.PcItem(":delete",
-			readline.PcItem("index"),
-			readline.PcItem("frame")),
-		readline.PcItem(":schema"),
-		readline.PcItem(":save"),
-		readline.PcItem(":session"),
-	)
+	completer := consoleCompleter(console)
 	config := &readline.Config{
 		AutoComplete:      completer,
 		InterruptPrompt:   "^C",
