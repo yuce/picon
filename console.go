@@ -54,7 +54,7 @@ type Console struct {
 	pilosaClient      *pilosa.Client
 	index             *pilosa.Index
 	prompt            *promptInfo
-	lastResponse      string
+	lastResponse      []byte
 	inst              *readline.Instance
 	homeDirectory     string
 	sessionsDirectory string
@@ -136,8 +136,8 @@ func (c *Console) Main() {
 		case strings.HasPrefix(line, ":"):
 			err = c.executeCommand(line)
 		case line == "_":
-			if c.lastResponse != "" {
-				fmt.Println(c.lastResponse)
+			if c.lastResponse != nil {
+				fmt.Println(string(tryPrettifyJSON(c.lastResponse)))
 			}
 		default:
 			err = c.executeQuery(line)
@@ -218,6 +218,8 @@ func (c *Console) executeCommand(line string) (err error) {
 		err = c.executeSessionCommand(cmd, args[1:])
 	case ":schema":
 		err = c.executeSchemaCommand(cmd, args[1:])
+	case ":http":
+		err = c.executeHTTPCommand(cmd, args[1:])
 	default:
 		err = fmt.Errorf("Invalid command: %s", cmd)
 	}
@@ -239,6 +241,10 @@ func (c *Console) executeConnectCommand(cmd string, args []string) error {
 		c.pilosaClient = nil
 		c.httpClient = nil
 		return err
+	}
+	version, _ := c.httpClient.serverVersion()
+	if err == nil {
+		fmt.Println("Pilosa server version:", version)
 	}
 	c.prompt.address = uri.Normalize()
 	c.updatePrompt()
@@ -447,6 +453,31 @@ func (c *Console) executeSchemaCommand(cmd string, args []string) error {
 	return nil
 }
 
+func (c *Console) executeHTTPCommand(cmd string, args []string) error {
+	if c.httpClient == nil {
+		return errNotConnected
+	}
+	if len(args) < 2 {
+		return fmt.Errorf("usage: %s method path [data]", cmd)
+	}
+	method := strings.ToUpper(args[0])
+	path := args[1]
+	if !strings.HasPrefix(path, "/") {
+		return errors.New("The path must start with /")
+	}
+	data := []byte{}
+	if len(args) >= 3 {
+		data = []byte(strings.Join(args[2:], " "))
+	}
+	response, err := c.httpClient.httpRequest(method, path, data)
+	if err != nil {
+		return err
+	}
+	c.lastResponse = response.Body
+	fmt.Println(string(tryPrettifyJSON(response.Body)))
+	return nil
+}
+
 func (c *Console) executeQuery(line string) error {
 	if c.httpClient == nil {
 		return errNotConnected
@@ -458,8 +489,8 @@ func (c *Console) executeQuery(line string) error {
 	if err != nil {
 		return err
 	}
-	c.lastResponse = string(response)
-	fmt.Println(c.lastResponse)
+	c.lastResponse = response
+	fmt.Println(string(tryPrettifyJSON(c.lastResponse)))
 	return nil
 }
 

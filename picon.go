@@ -35,8 +35,11 @@ DAMAGE.
 package picon
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
+
+	pj "github.com/hokaccha/go-prettyjson"
 )
 
 type promptInfo struct {
@@ -58,4 +61,17 @@ func colorString(color Ansi, msg string) string {
 
 func autoSessionName() string {
 	return time.Now().Format("2006-01-02_15-04-05")
+}
+
+func tryPrettifyJSON(text []byte) []byte {
+	jsonResponse := make(map[string]interface{})
+	err := json.Unmarshal(text, &jsonResponse)
+	if err != nil {
+		return text
+	}
+	prettyText, err := pj.Marshal(jsonResponse)
+	if err != nil {
+		return text
+	}
+	return prettyText
 }

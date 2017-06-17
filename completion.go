@@ -21,6 +21,11 @@ func consoleCompleter(console *Console) *readline.PrefixCompleter {
 		readline.PcItem(":schema"),
 		readline.PcItem(":save"),
 		readline.PcItem(":session"),
+		readline.PcItem(":http",
+			readline.PcItem("get"),
+			readline.PcItem("post"),
+			readline.PcItem("delete"),
+			readline.PcItem("patch")),
 
 		// PQL commands
 		readline.PcItem("Bitmap("),

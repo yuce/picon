@@ -37,13 +37,13 @@ package picon
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net"
 	"net/http"
 	"time"
 
-	pj "github.com/hokaccha/go-prettyjson"
 	pilosa "github.com/pilosa/go-pilosa"
 )
 
@@ -53,6 +53,12 @@ const SocketTimeout = 100 * time.Second
 type Client struct {
 	URI        *pilosa.URI
 	httpClient *http.Client
+}
+
+type HttpResponse struct {
+	Body       []byte
+	Type       string
+	StatusCode int
 }
 
 func NewClient(addr string) (*Client, error) {
@@ -72,14 +78,30 @@ func (c *Client) query(index string, text string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	jsonResponse := make(map[string]interface{})
-	json.Unmarshal(response, &jsonResponse)
-	return pj.Marshal(jsonResponse)
+	return response.Body, nil
 }
 
-func (c *Client) httpRequest(method string, path string, data []byte) ([]byte, error) {
+func (c *Client) serverVersion() (string, error) {
+	response, err := c.httpGet("/version")
+	if err != nil {
+		return "", err
+	}
+	jsonResponse := make(map[string]interface{})
+	json.Unmarshal(response.Body, &jsonResponse)
+	if version, ok := jsonResponse["version"]; ok {
+		return version.(string), nil
+	}
+	return "", errors.New("Version not detected")
+
+}
+
+func (c *Client) httpGet(path string) (*HttpResponse, error) {
+	return c.httpRequest("GET", path, []byte{})
+}
+
+func (c *Client) httpRequest(method string, path string, data []byte) (*HttpResponse, error) {
 	path = c.URI.Normalize() + path
-	request, err := http.NewRequest("POST", path, bytes.NewReader(data))
+	request, err := http.NewRequest(method, path, bytes.NewReader(data))
 	if err != nil {
 		return nil, err
 	}
@@ -95,7 +117,11 @@ func (c *Client) httpRequest(method string, path string, data []byte) ([]byte, e
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return nil, fmt.Errorf("%s: %s", response.Status, buf)
 	}
-	return buf, err
+	return &HttpResponse{
+		Body:       buf,
+		Type:       response.Header.Get("content-type"),
+		StatusCode: response.StatusCode,
+	}, nil
 }
 
 func newHTTPClient() *http.Client {
