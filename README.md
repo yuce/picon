@@ -21,14 +21,18 @@ go get github.com/yuce/picon/cmd/picon && go build github.com/yuce/picon/cmd/pic
 
 ## Usage
 
-You can run the console with `picon`. To get a list of commands, hit `:` and then `Tab`. To exit, you can type `:exit` or hit `Ctrl+D`.
+You can run the console with `picon`.
 
 - Commands start with `:`.
+- To get a list of commands, hit `:` and then `Tab`.
+- To exit, you can type `:exit` or hit `Ctrl+D`.
 - Notes start with `#`.
 - Queries can be run directly.
 - In order to enter multiline commands/queries, finish a line with backslash (`\`).
 - Up/down arrow keys can be used to access the history.
+- Hit tab for PQL call completion.
 - `:use` command supports index name completion.
+- `:connect` command supports address completion using the history.
 - If a command is made up of more than one word, they can be autocompleted.
 
 Sample workflow:
@@ -41,6 +45,20 @@ Sample workflow:
 > Bitmap(frame='myframe', rowID=1)
 ... Some output
 ```
+
+### Available commands
+
+* `:connect`: Connect to the Pilosa server. Usage: `:connect pilosa-address`.
+* `:create`: Create an index or a frame. Usage: `:create {index | frame} name [option1=value1, ...]`.
+* `:delete`: Delete an index or a frame. Usage: `:delete {index | frame} name1, ...`.
+* `:ensure`: Ensure that an index or a frame exists. Usage: `:ensure {index | frame} name [option1=value1, ...]`.
+* `:http`: Send a raw HTTP request to the server. See: [API Documentation](https://www.pilosa.com/docs/api-reference/). Usage: `:http method path [data]`.
+* `:schema`: Display the scheme (indexes and frames) on the server. Usage: `:schema`.
+* `:use`: Open an index. Usage: `:use index-name`.
+
+### Queries
+
+Any valid PQL query can be executed directly. See: [PQL Documentation](https://www.pilosa.com/docs/query-language/)
 
 ## License
 
