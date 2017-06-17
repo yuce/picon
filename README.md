@@ -7,6 +7,11 @@ Simple console for [Pilosa](https://www.pilosa.com/) high performance distribute
 
 This app uses JSON API of Pilosa directly for queries and the official [Go client](https://github.com/pilosa/go-pilosa) for everything else (e.g., creating indexes, frames, ...).
 
+## Change Log
+
+* **0.2.0** (2017-06-17)
+    * Initial public version
+
 ## Dependencies
 
 * [Pilosa Go Client](https://github.com/pilosa/go-pilosa)
@@ -39,9 +44,9 @@ Sample workflow:
 
 ```
 > :connect :10101
-> :ensure index myindex
-> :ensure frame myframe
-> SetBit(frame='myframe', rowID=1, columnID=100)
+> :ensure index myindex col=col_id
+> :ensure frame myframe inverse=true
+> SetBit(frame='myframe', rowID=1, col_id=100)
 > Bitmap(frame='myframe', rowID=1)
 ... Some output
 ```
@@ -55,6 +60,17 @@ Sample workflow:
 * `:http`: Send a raw HTTP request to the server. See: [API Documentation](https://www.pilosa.com/docs/api-reference/). Usage: `:http method path [data]`.
 * `:schema`: Display the scheme (indexes and frames) on the server. Usage: `:schema`.
 * `:use`: Open an index. Usage: `:use index-name`.
+
+`:create index` and `:ensure index` commands support the following options:
+* `column_label`, `columnLabel`, `col`, `c`
+* `time_quantum`, `timeQuantum`, `time`, `t`
+
+`:create frame` and `:ensure frame` commands support the following options:
+* `row_label`, `rowLabel`, `row`, `r`
+* `time_quantum`, `timeQuantum`, `time`, `t`
+* `inverse_enabled`, `inverseEnabled`, `inverse`, `i`.
+
+You can use `true`, `t` or `1` for true value; `false`, `f` or `0` false value.
 
 ### Queries
 
