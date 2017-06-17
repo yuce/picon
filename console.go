@@ -1,11 +1,48 @@
+/*
+Copyright 2017 Yuce Tekol
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions
+are met:
+
+1. Redistributions of source code must retain the above copyright
+notice, this list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright
+notice, this list of conditions and the following disclaimer in the
+documentation and/or other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its
+contributors may be used to endorse or promote products derived
+from this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
+CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
+NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
+DAMAGE.
+*/
+
 package picon
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"path"
+	"sort"
 	"strings"
 
 	"github.com/chzyer/readline"
@@ -13,10 +50,11 @@ import (
 )
 
 type Console struct {
-	client            *pilosa.Client
+	httpClient        *Client
+	pilosaClient      *pilosa.Client
 	index             *pilosa.Index
 	prompt            *promptInfo
-	lastResponse      *pilosa.QueryResponse
+	lastResponse      string
 	inst              *readline.Instance
 	homeDirectory     string
 	sessionsDirectory string
@@ -39,7 +77,7 @@ func NewConsole(homeDirectory string) (*Console, error) {
 	}
 	completer := readline.NewPrefixCompleter(
 		readline.PcItem(":exit"),
-		readline.PcItem(":connect"),
+		readline.PcItem(":connect", readline.PcItemDynamic(console.listConnections())),
 		readline.PcItem(":use", readline.PcItemDynamic(console.listIndexes())),
 		readline.PcItem(":ensure",
 			readline.PcItem("index"),
@@ -82,9 +120,12 @@ func (c *Console) Main() {
 	lines := []string{}
 	for {
 		line, err := c.inst.Readline()
+		if err == io.EOF {
+			goto exit
+		}
 		if err == readline.ErrInterrupt {
 			if len(line) == 0 {
-				break
+				fmt.Println("Type :exit to exit")
 			} else {
 				continue
 			}
@@ -111,8 +152,8 @@ func (c *Console) Main() {
 		case strings.HasPrefix(line, ":"):
 			err = c.executeCommand(line)
 		case line == "_":
-			if c.lastResponse != nil {
-				printResponse(c.lastResponse)
+			if c.lastResponse != "" {
+				fmt.Println(c.lastResponse)
 			}
 		default:
 			err = c.executeQuery(line)
@@ -143,6 +184,33 @@ func (c *Console) listIndexes() func(string) []string {
 			}
 		}
 		return indexNames
+	}
+}
+
+func (c *Console) listConnections() func(string) []string {
+	return func(line string) []string {
+		addrs := []string{}
+		file, err := os.Open(c.inst.Config.HistoryFile)
+		if err != nil {
+			return addrs
+		}
+		defer file.Close()
+		addrSet := map[string]bool{}
+		scanner := bufio.NewScanner(file)
+		for scanner.Scan() {
+			text := scanner.Text()
+			if strings.HasPrefix(text, ":connect ") {
+				fields := strings.Fields(text)
+				if len(fields) > 1 {
+					addrSet[fields[1]] = true
+				}
+			}
+		}
+		for addr := range addrSet {
+			addrs = append(addrs, addr)
+		}
+		sort.Strings(addrs)
+		return addrs
 	}
 }
 
@@ -180,10 +248,12 @@ func (c *Console) executeConnectCommand(cmd string, args []string) error {
 	if err != nil {
 		return err
 	}
-	c.client = pilosa.NewClientWithURI(uri)
+	c.pilosaClient = pilosa.NewClientWithURI(uri)
+	c.httpClient, _ = NewClient(uri.Normalize())
 	err = c.updateSchema()
 	if err != nil {
-		c.client = nil
+		c.pilosaClient = nil
+		c.httpClient = nil
 		return err
 	}
 	c.prompt.address = uri.Normalize()
@@ -195,7 +265,7 @@ func (c *Console) executeUseCommand(cmd string, args []string) (err error) {
 	if len(args) != 1 {
 		return errors.New("usage: :use index-name")
 	}
-	if c.client == nil {
+	if c.pilosaClient == nil {
 		return errNotConnected
 	}
 	indexName := args[0]
@@ -209,7 +279,7 @@ func (c *Console) executeUseCommand(cmd string, args []string) (err error) {
 }
 
 func (c *Console) executeCreateOrEnsureCommand(cmd string, args []string) (err error) {
-	if c.client == nil {
+	if c.pilosaClient == nil {
 		return errNotConnected
 	}
 	if len(args) < 2 {
@@ -235,9 +305,9 @@ func (c *Console) executeCreateOrEnsureCommand(cmd string, args []string) (err e
 		}
 		switch cmd {
 		case ":create":
-			err = c.client.CreateIndex(c.index)
+			err = c.pilosaClient.CreateIndex(c.index)
 		case ":ensure":
-			err = c.client.EnsureIndex(c.index)
+			err = c.pilosaClient.EnsureIndex(c.index)
 		default:
 			return fmt.Errorf("Invalid command in this context: %s", cmd)
 		}
@@ -261,9 +331,9 @@ func (c *Console) executeCreateOrEnsureCommand(cmd string, args []string) (err e
 		}
 		switch cmd {
 		case ":create":
-			err = c.client.CreateFrame(frame)
+			err = c.pilosaClient.CreateFrame(frame)
 		case ":ensure":
-			err = c.client.EnsureFrame(frame)
+			err = c.pilosaClient.EnsureFrame(frame)
 		default:
 			return fmt.Errorf("Invalid command in this context: %s", cmd)
 		}
@@ -274,7 +344,7 @@ func (c *Console) executeCreateOrEnsureCommand(cmd string, args []string) (err e
 }
 
 func (c *Console) executeDeleteCommand(cmd string, args []string) (err error) {
-	if c.client == nil {
+	if c.pilosaClient == nil {
 		return errNotConnected
 	}
 	if len(args) < 2 {
@@ -290,7 +360,7 @@ func (c *Console) executeDeleteCommand(cmd string, args []string) (err error) {
 				printWarning(fmt.Sprintf("Skipping invalid index `%s`: %s", what, err))
 				continue
 			}
-			err = c.client.DeleteIndex(c.index)
+			err = c.pilosaClient.DeleteIndex(c.index)
 			if err != nil {
 				printError(fmt.Errorf("Error deleting index `%s`: %s", what, err))
 				continue
@@ -307,7 +377,7 @@ func (c *Console) executeDeleteCommand(cmd string, args []string) (err error) {
 				printWarning(fmt.Sprintf("Skipping invalid index `%s`: %s", what, err))
 				continue
 			}
-			err = c.client.DeleteFrame(frame)
+			err = c.pilosaClient.DeleteFrame(frame)
 			if err != nil {
 				printError(fmt.Errorf("Error deleting frame `%s`: %s", what, err))
 				continue
@@ -394,18 +464,18 @@ func (c *Console) executeSchemaCommand(cmd string, args []string) error {
 }
 
 func (c *Console) executeQuery(line string) error {
-	if c.client == nil {
+	if c.httpClient == nil {
 		return errNotConnected
 	}
 	if c.index == nil {
 		return errNoIndex
 	}
-	response, err := c.client.Query(c.index.RawQuery(line), nil)
+	response, err := c.httpClient.query(c.index.Name(), line)
 	if err != nil {
 		return err
 	}
-	c.lastResponse = response
-	printResponse(response)
+	c.lastResponse = string(response)
+	fmt.Println(c.lastResponse)
 	return nil
 }
 
@@ -433,10 +503,10 @@ func (c *Console) ensureHomeDirectoryExists() {
 }
 
 func (c *Console) updateSchema() error {
-	if c.client == nil {
+	if c.pilosaClient == nil {
 		return errNotConnected
 	}
-	schema, err := c.client.Schema()
+	schema, err := c.pilosaClient.Schema()
 	if err != nil {
 		return err
 	}

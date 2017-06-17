@@ -1,4 +1,3 @@
-/*
 Copyright 2017 Yuce Tekol
 
 Redistribution and use in source and binary forms, with or without
@@ -30,32 +29,3 @@ WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING
 NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
 DAMAGE.
-*/
-
-package picon
-
-import (
-	"fmt"
-	"time"
-)
-
-type promptInfo struct {
-	address string
-	index   string
-}
-
-func printError(err error) {
-	fmt.Println(colorString(fgRed, err.Error()))
-}
-
-func printWarning(msg string) {
-	fmt.Println(colorString(fgRed, msg))
-}
-
-func colorString(color Ansi, msg string) string {
-	return fmt.Sprintf("%s%s%s", color, msg, attrReset)
-}
-
-func autoSessionName() string {
-	return time.Now().Format("2006-01-02_15-04-05")
-}
