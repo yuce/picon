@@ -7,6 +7,9 @@ Simple console for [Pilosa](https://www.pilosa.com/) high performance distribute
 
 This app uses JSON API of Pilosa directly for queries and the official [Go client](https://github.com/pilosa/go-pilosa) for everything else (e.g., creating indexes, frames, ...).
 
+Below is a screencast that shows how it works:
+<a href="https://asciinema.org/a/1xq1wbwku38bo96jqx0coxql0" target="_blank"><img src="https://asciinema.org/a/1xq1wbwku38bo96jqx0coxql0.png" /></a>
+
 ## Change Log
 
 * **0.2.0** (2017-06-17)
@@ -39,6 +42,7 @@ You can run the console with `picon`.
 - `:use` command supports index name completion.
 - `:connect` command supports address completion using the history.
 - If a command is made up of more than one word, they can be autocompleted.
+- See the [keyboard shortcuts](https://github.com/chzyer/readline/blob/master/doc/shortcut.md) you can use.
 
 Sample workflow:
 
