@@ -23,8 +23,11 @@ Below is a screencast that shows how it works:
 
 ## Build
 
+Go 1.8 or higher is needed. UNIX and Windows platforms are supported.
+
+Make sure `go` is on the path and run:
 ```
-go get github.com/yuce/picon/cmd/picon && go build github.com/yuce/picon/cmd/picon
+make
 ```
 
 ## Usage
