@@ -27,7 +27,8 @@ Go 1.8 or higher is needed. UNIX and Windows platforms are supported.
 
 Make sure `go` is on the path and run:
 ```
-make
+go get github.com/yuce/picon/cmd/picon
+go install github.com/yuce/picon/cmd/picon
 ```
 
 ## Usage
