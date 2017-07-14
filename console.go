@@ -163,8 +163,8 @@ func (c *Console) listIndexes() func(string) []string {
 	return func(line string) []string {
 		indexNames := []string{}
 		if c.schema != nil {
-			for _, index := range c.schema.Indexes {
-				indexNames = append(indexNames, index.Name)
+			for _, index := range c.schema.Indexes() {
+				indexNames = append(indexNames, index.Name())
 			}
 		}
 		return indexNames
@@ -437,16 +437,17 @@ func (c *Console) executeSchemaCommand(cmd string, args []string) error {
 	if err != nil {
 		return err
 	}
-	for _, index := range c.schema.Indexes {
-		if indexName == "" || indexName == index.Name {
-			frameList := make([]string, 0, len(index.Frames))
-			for _, frame := range index.Frames {
-				frameList = append(frameList, frame.Name)
+	for _, index := range c.schema.Indexes() {
+		if indexName == "" || indexName == index.Name() {
+			frames := index.Frames()
+			frameList := make([]string, 0, len(frames))
+			for _, frame := range frames {
+				frameList = append(frameList, frame.Name())
 			}
 			if indexName != "" {
 				fmt.Printf("[%s]\n", strings.Join(frameList, ", "))
 			} else {
-				fmt.Printf("%s [%s]\n", index.Name, strings.Join(frameList, ", "))
+				fmt.Printf("%s [%s]\n", index.Name(), strings.Join(frameList, ", "))
 			}
 		}
 	}
